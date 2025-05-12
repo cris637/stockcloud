@@ -55,20 +55,24 @@ export default function EditarUsuarioPage() {
     )
   }
 
-  const guardarCambios = async () => {
-    setMensaje('Guardando...')
+const guardarCambios = async () => {
+  setMensaje('Guardando...')
 
-    await supabase.from('permisos').delete().eq('usuario_id', id)
+  const res = await fetch('/app/usuarios/api/editar-permisos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, permisos })
+  })
 
-    const nuevos = permisos.map(p => ({
-      usuario_id: id,
-      ruta: p
-    }))
-
-    await supabase.from('permisos').insert(nuevos)
-
+  if (res.ok) {
     setMensaje('Permisos actualizados')
+    router.push('/app/usuarios') 
+  } else {
+    const err = await res.json()
+    setMensaje(`Error: ${err.error}`)
   }
+}
+
 
   const cambiarPassword = async () => {
     if (!nuevaPassword) return

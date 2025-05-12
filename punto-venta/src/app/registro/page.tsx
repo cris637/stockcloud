@@ -1,4 +1,5 @@
 'use client'
+
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -18,11 +19,13 @@ export default function RegistroPage() {
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema)
   })
+
   const [mensaje, setMensaje] = useState('')
 
   const onSubmit = async (data: FormData) => {
     setMensaje('Registrando...')
 
+    // Crear usuario en Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: data.email,
       password: data.password
@@ -35,46 +38,70 @@ export default function RegistroPage() {
       return
     }
 
-    // Crear tienda
-    const { data: tienda, error: tiendaError } = await supabase
-      .from('tiendas')
-      .insert({ nombre: data.nombreTienda })
-      .select()
-      .single()
+// Crear tienda
+const res = await fetch('/api/crear-tienda', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ nombre: data.nombreTienda })
+})
 
-    if (tiendaError || !tienda) {
-      setMensaje('Error al crear la tienda')
-      return
-    }
+const json = await res.json()
+if (!res.ok || !json.tienda) {
+  setMensaje('Error al crear la tienda: ' + (json.error || ''))
+  return
+}
+const tienda = json.tienda
 
-    // Crear rol "admin" para esa tienda
-    const { data: rolAdmin, error: rolInsertError } = await supabase
-      .from('roles')
-      .insert({
-        nombre: 'admin',
-        tienda_id: tienda.id
-      })
-      .select()
-      .single()
 
-    if (rolInsertError || !rolAdmin) {
-      setMensaje('Error al crear el rol admin para la tienda')
-      return
-    }
-
-    // Crear usuario vinculado a la tienda y rol
+    // Insertar usuario en tabla usuarios
     const { error: userInsertError } = await supabase
       .from('usuarios')
       .insert({
         id: user.id,
         nombre: data.nombre,
+        email: data.email,
         tienda_id: tienda.id,
         rol: 'admin',
-        rol_id: rolAdmin.id
+        visible: true
       })
 
     if (userInsertError) {
-      setMensaje('Error al asociar usuario a tienda: ' + userInsertError.message)
+      setMensaje('Error al registrar usuario en la tienda: ' + userInsertError.message)
+      return
+    }
+
+    // Insertar en tabla usuario_tienda
+    const { error: vinculoError } = await supabase
+      .from('usuario_tienda')
+      .insert({
+        usuario_id: user.id,
+        tienda_id: tienda.id
+      })
+
+    if (vinculoError) {
+      setMensaje('Error al vincular usuario con la tienda: ' + vinculoError.message)
+      return
+    }
+
+    // Permisos por defecto para admin
+    const rutasAdmin = [
+      '/app/dashboard',
+      '/app/productos',
+      '/app/ventas',
+      '/app/usuarios',
+      '/app/reportes',
+      '/app/configuracion'
+    ]
+
+    const { error: permisosError } = await supabase
+      .from('permisos')
+      .insert(rutasAdmin.map(r => ({
+        usuario_id: user.id,
+        ruta: r
+      })))
+
+    if (permisosError) {
+      setMensaje('Error al asignar permisos: ' + permisosError.message)
       return
     }
 

@@ -1,4 +1,5 @@
 'use client'
+
 import { createContext, useContext, useEffect, useState } from 'react'
 import supabase from '@/lib/supabaseClient'
 
@@ -17,32 +18,77 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
 
   useEffect(() => {
     const obtenerUsuario = async () => {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const id = sessionData?.session?.user?.id
+      console.log('[SESSION] Iniciando obtención de usuario')
 
-      if (id) {
-        const { data: userData } = await supabase
-          .from('usuarios')
-          .select('id, nombre, rol, tienda_id')
-          .eq('id', id)
-          .single()
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      console.log('[SESSION] Datos de sesión:', session)
+      console.log('[SESSION] Error de sesión:', sessionError)
 
-        if (userData) {
-          const { data: tienda } = await supabase
-            .from('tiendas')
-            .select('activa')
-            .eq('id', userData.tienda_id)
-            .single()
+      const id = session?.user?.id
+      console.log('[SESSION] UID actual:', id)
 
-          setUsuario({
-            ...userData,
-            tienda_activa: tienda?.activa ?? true
-          })
-        }
+      if (!id) return
+
+      // Obtener tienda_id desde tabla usuario_tienda
+      const { data: tiendaData, error: tiendaIdError } = await supabase
+        .from('usuario_tienda')
+        .select('tienda_id')
+        .eq('usuario_id', id)
+        .limit(1)
+
+      if (tiendaIdError || !tiendaData || tiendaData.length === 0) {
+        console.error('[SESSION] Error obteniendo tienda_id desde usuario_tienda:', tiendaIdError || 'No se encontró tienda')
+        return
       }
+
+      const tienda_id = tiendaData[0].tienda_id
+      console.log('[SESSION] tienda_id desde usuario_tienda:', tienda_id)
+
+      // Obtener datos básicos del usuario
+      const { data: userData, error: userError } = await supabase
+        .from('usuarios')
+        .select('id, nombre, rol')
+        .eq('id', id)
+        .single()
+
+      if (userError || !userData) {
+        console.error('[SESSION] Error al obtener usuario:', userError)
+        return
+      }
+
+      // Verificar si la tienda está activa
+      const { data: tienda, error: tiendaError } = await supabase
+        .from('tiendas')
+        .select('activa')
+        .eq('id', tienda_id)
+        .single()
+
+      if (tiendaError) {
+        console.error('[SESSION] Error al obtener tienda:', tiendaError)
+      }
+
+      const usuarioExtendido: UsuarioExtendido = {
+        ...userData,
+        tienda_id,
+        tienda_activa: tienda?.activa ?? true
+      }
+
+      console.log('[SESSION] Usuario final:', usuarioExtendido)
+      setUsuario(usuarioExtendido)
     }
 
     obtenerUsuario()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log(`[AUTH] Cambio de estado: ${event}`)
+      if (event === 'SIGNED_OUT') {
+        setUsuario(null)
+      } else if (session) {
+        obtenerUsuario()
+      }
+    })
+
+    return () => subscription?.unsubscribe()
   }, [])
 
   return (

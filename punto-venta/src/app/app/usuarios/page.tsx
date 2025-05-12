@@ -12,41 +12,44 @@ export default function UsuariosPage() {
 
   useEffect(() => {
     const cargarUsuarios = async () => {
-      if (!session || session.rol !== 'admin') return
-
-      console.log('[DEBUG] Session tienda_id:', session.tienda_id)
-
-      const { data: users, error } = await supabase
-        .from('usuarios')
-        .select('id, nombre, tienda_id')
-        .eq('tienda_id', session.tienda_id)
-
-      if (error) {
-        console.error('[ERROR] Al obtener usuarios:', error)
+      if (!session || !session.tienda_id) {
+        console.log('[USUARIOS] Esperando sesión válida...')
         return
       }
 
-      console.log('[DEBUG] Usuarios encontrados:', users)
+      console.log('[USUARIOS] Iniciando carga de usuarios')
 
-      const usuariosConPermisos = await Promise.all(
-        (users ?? []).map(async (user) => {
-          const { data: permisosData, error: permisosError } = await supabase
-            .from('permisos')
-            .select('ruta')
-            .eq('usuario_id', user.id)
+      const { data: users, error: usersError } = await supabase
+        .from('usuarios')
+        .select('id, nombre, rol, email, visible, tienda_id')
+        .eq('tienda_id', session.tienda_id)
 
-          if (permisosError) {
-            console.error('[ERROR] Permisos de usuario', user.id, permisosError)
-          }
+      if (usersError) {
+        console.error('[USUARIOS] Error al obtener usuarios:', usersError)
+        return
+      }
 
-          return {
-            ...user,
-            permisos: permisosData?.map(p => p.ruta) || []
-          }
-        })
-      )
+const usuariosConPermisos = await Promise.all(
+  (users ?? []).map(async (user) => {
+    const res = await fetch('/app/usuarios/api/permisos', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ userId: user.id })
+    })
 
-      console.log('[DEBUG] Usuarios con permisos:', usuariosConPermisos)
+    const json = await res.json()
+
+    return {
+      ...user,
+      permisos: json.permisos?.map((p: any) => p.ruta) || []
+    }
+  })
+)
+
+
+      console.log('[USUARIOS] Usuarios con todos los datos:', usuariosConPermisos)
       setUsuarios(usuariosConPermisos)
     }
 
@@ -55,13 +58,18 @@ export default function UsuariosPage() {
 
   const eliminarUsuario = async (id: string) => {
     if (!confirm('¿Estás seguro de que deseas eliminar este usuario?')) return
-    await supabase.from('usuarios').delete().eq('id', id)
+await fetch('/app/usuarios/api/eliminar', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ id })
+})
     setUsuarios(prev => prev.filter(u => u.id !== id))
   }
 
-  if (!session || session.rol !== 'admin') {
-    return <p className="text-center text-error mt-10">Acceso denegado</p>
-  }
+  if (!session) return <p className="text-center mt-10">Cargando sesión...</p>
+  if (session.rol !== 'admin') return <p className="text-center text-error mt-10">Acceso denegado</p>
 
   return (
     <div className="p-6">
@@ -76,7 +84,10 @@ export default function UsuariosPage() {
           <thead>
             <tr>
               <th>Nombre</th>
+              <th>Email</th>
+              <th>Rol</th>
               <th>Permisos</th>
+              <th>Visible</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -84,6 +95,8 @@ export default function UsuariosPage() {
             {usuarios.map((u) => (
               <tr key={u.id}>
                 <td>{u.nombre}</td>
+                <td>{u.email || '—'}</td>
+                <td className="capitalize">{u.rol}</td>
                 <td>
                   <ul className="list-disc list-inside text-sm">
                     {u.permisos.map((p: string) => (
@@ -91,6 +104,7 @@ export default function UsuariosPage() {
                     ))}
                   </ul>
                 </td>
+                <td>{u.visible ? 'Sí' : 'No'}</td>
                 <td className="flex gap-2">
                   <button
                     onClick={() => router.push(`/app/usuarios/editar/${u.id}`)}
@@ -111,6 +125,13 @@ export default function UsuariosPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-8 p-4 bg-base-200 rounded-lg">
+        <h2 className="text-lg font-bold mb-2">Datos de Depuración</h2>
+        <pre className="text-xs overflow-x-auto">
+          {JSON.stringify({ session, usuarios, tiempo: new Date().toISOString() }, null, 2)}
+        </pre>
       </div>
     </div>
   )

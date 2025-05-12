@@ -1,15 +1,12 @@
-import '../globals.css'
-import AppShell from '@/components/AppShell'
 import { SessionProvider } from '@/context/SessionContext'
+import AppShell from '@/components/AppShell'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
-      <body>
-        <SessionProvider>
-          <AppShell>{children}</AppShell>
-        </SessionProvider>
-      </body>
-    </html>
+    <SessionProvider>
+      <AppShell>
+        {children}
+      </AppShell>
+    </SessionProvider>
   )
 }

@@ -1,3 +1,4 @@
+// app/api/crear-usuario/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import supabaseAdmin from '@/lib/supabaseAdmin'
 
@@ -17,13 +18,22 @@ export async function POST(req: NextRequest) {
 
   const userId = userData.user.id
 
-  // Insertar en tabla usuarios
+  // Insertar en tabla usuarios (agregamos el email)
   const { error: dbError } = await supabaseAdmin
     .from('usuarios')
-    .insert([{ id: userId, nombre, tienda_id, rol: 'generico' }])
+    .insert([{ id: userId, nombre, email, tienda_id, rol: 'generico', visible: true }])
 
   if (dbError) {
     return NextResponse.json({ error: dbError.message }, { status: 400 })
+  }
+
+  // Insertar en tabla auxiliar usuario_tienda
+  const { error: auxError } = await supabaseAdmin
+    .from('usuario_tienda')
+    .insert([{ usuario_id: userId, tienda_id }])
+
+  if (auxError) {
+    return NextResponse.json({ error: auxError.message }, { status: 400 })
   }
 
   // Insertar permisos
